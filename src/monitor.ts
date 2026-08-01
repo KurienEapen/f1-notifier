@@ -44,13 +44,55 @@ export async function checkTarget(target: MonitoredTarget): Promise<{ status: 'A
 
     const $ = cheerio.load(html);
 
+    // F1 Main Catalog Index Inspector (tickets.formula1.com)
+    if (target.url === 'https://tickets.formula1.com/' || target.url.includes('tickets.formula1.com/en')) {
+      let f1CardStatus: string = 'WAITING';
+      let f1CardMessage = 'Bahrain GP card currently shows VIEW MORE (Interest Registration). Monitoring active.';
+      let matchedPriceOrAction = '';
+      const previousStatus = String(target.lastStatus);
+
+      // Find cards mentioning Bahrain or Malaysia or Sepang
+      $('article, .event-card, .card, div, section').each((_: any, elem: any) => {
+        const text = $(elem).text().toLowerCase();
+
+        const isBahrainMalaysiaCard = (text.includes('bahrain') || text.includes('malaysia') || text.includes('sepang')) && text.includes('2026');
+
+        if (isBahrainMalaysiaCard) {
+          const buttonText = $(elem).find('button, a, .btn').text().trim().toLowerCase();
+          const hasBookNow = buttonText.includes('book now') || buttonText.includes('buy ticket');
+          const hasFromPrice = text.includes('from') && /(from\s*[$€£rmmyr\d])/i.test(text);
+
+          if (hasBookNow || hasFromPrice) {
+            f1CardStatus = 'AVAILABLE';
+            matchedPriceOrAction = hasBookNow ? 'BOOK NOW Button' : 'From Price Listing';
+            f1CardMessage = `🚨 TICKETS OPEN ON F1 STORE! Card updated to "${matchedPriceOrAction}".`;
+            return false;
+          }
+        }
+      });
+
+      if (f1CardStatus === 'AVAILABLE') {
+        if (previousStatus !== 'AVAILABLE') {
+          await triggerTicketAlert({
+            targetName: 'F1 Official Ticket Store Catalog',
+            targetUrl: target.url,
+            matchedKeyword: matchedPriceOrAction,
+            details: 'Bahrain GP card on F1 Store catalog updated from VIEW MORE to BOOK NOW with pricing.'
+          });
+        }
+        return { status: 'AVAILABLE', message: f1CardMessage };
+      } else {
+        return { status: 'WAITING', message: f1CardMessage };
+      }
+    }
+
     // Sepang Circuit Ticketing Page Handler
     if (target.url.includes('sepangcircuit.com/ticketing')) {
       let foundF1Card = false;
       let matchedTitle = '';
 
       // Inspect individual event cards (avoid top-level section/div wrappers)
-      $('article, [class*="card"], [class*="event"], [class*="item"]').each((_, elem) => {
+      $('article, [class*="card"], [class*="event"], [class*="item"]').each((_: any, elem: any) => {
         const fullCardText = $(elem).text().toLowerCase();
         // Look for title text inside the card
         const cardTitle = $(elem).find('h1, h2, h3, h4, h5, p, [class*="title"]').text().toLowerCase();
@@ -107,7 +149,7 @@ export async function checkTarget(target: MonitoredTarget): Promise<{ status: 'A
     let matchedAction: string | null = null;
 
     // Search interactive main content area for actual buy buttons
-    $('main, .content, .container, .ticket-selection, .tickets-list, form, .card').find('a, button, .btn, input[type="submit"]').each((_, elem) => {
+    $('main, .content, .container, .ticket-selection, .tickets-list, form, .card').find('a, button, .btn, input[type="submit"]').each((_: any, elem: any) => {
       const text = $(elem).text().trim().toLowerCase();
 
       // Ignore static navigation or view-more buttons
