@@ -89,12 +89,18 @@ export function loadConfig(): AppConfig {
     }
   }
 
+  const existingTargets = config.targets || [];
+  const mergedTargets: MonitoredTarget[] = DEFAULT_TARGETS.map(defTarget => {
+    const existing = existingTargets.find(t => t.id === defTarget.id);
+    return existing ? { ...defTarget, ...existing } : defTarget;
+  });
+
   return {
     telegramBotToken: config.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '',
     telegramChatId: config.telegramChatId || process.env.TELEGRAM_CHAT_ID || '',
     discordWebhookUrl: config.discordWebhookUrl || process.env.DISCORD_WEBHOOK_URL || '',
     cronSchedule: config.cronSchedule || process.env.CHECK_CRON_SCHEDULE || '*/5 * * * *',
-    targets: config.targets && config.targets.length > 0 ? config.targets : DEFAULT_TARGETS
+    targets: mergedTargets
   };
 }
 

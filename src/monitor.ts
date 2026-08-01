@@ -43,100 +43,71 @@ export async function checkTarget(target: MonitoredTarget): Promise<{ status: 'A
     }
 
     const $ = cheerio.load(html);
+
+    // Remove header, footer, navigation menus to prevent matching static site navigation links (e.g. "Grandstand Info")
+    $('header, footer, nav, .menu, .navigation, .footer, .site-header').remove();
+
     const bodyText = $('body').text().toLowerCase();
 
-    // Auto-Discovery Mode: If checking main catalog index, scan all event links for Malaysia / Bahrain GP
-    if (target.url === 'https://tickets.formula1.com/') {
-      let discoveredUrl: string | null = null;
-      let discoveredText: string | null = null;
-
-      $('a[href*="malaysia"], a[href*="bahrain"], a[href*="sepang"]').each((_, elem) => {
-        const href = $(elem).attr('href');
-        const text = $(elem).text().trim();
-        if (href && (href.includes('malaysia') || href.includes('bahrain') || href.includes('sepang'))) {
-          discoveredUrl = href.startsWith('http') ? href : `https://tickets.formula1.com${href}`;
-          discoveredText = text || 'Malaysia / Bahrain GP Ticket Link';
-          return false;
-        }
-      });
-
-      if (discoveredUrl) {
-        console.log(`[Auto-Discovery] Found event link on main F1 catalog: ${discoveredUrl}`);
-        // Alert if a new event page URL is discovered or goes live
-        if (target.lastStatus !== 'AVAILABLE') {
-          await triggerTicketAlert({
-            targetName: 'F1 Store Main Catalog Index',
-            targetUrl: discoveredUrl,
-            matchedKeyword: 'New Event Link Published on F1 Store Index',
-            details: `Found active ticket link on main catalog: "${discoveredText}" -> ${discoveredUrl}`
-          });
-        }
-        return {
-          status: 'AVAILABLE',
-          message: `Discovered race ticket link on main F1 catalog: ${discoveredUrl}`
-        };
-      }
-    }
-
-    // Check if the page is currently in "Email Interest Registration" mode
+    // Check if the page is currently showing the email interest registration form
     const hasEmailField = $('input[type="email"], input[placeholder*="email"]').length > 0;
-    const hasSendBtn = $('button:contains("SEND"), input[type="submit"][value*="SEND"]').length > 0 || bodyText.includes('receive the latest news and ticket promotions');
+    const isInterestOnly = hasEmailField || bodyText.includes('receive the latest news and ticket promotions') || bodyText.includes('register your interest');
 
-    // High-confidence ticket purchase indicators
-    const PURCHASE_KEYWORDS = [
+    // Strict purchase keywords (Must be an actual checkout / buy action)
+    const STRICT_PURCHASE_BUTTONS = [
       'add to basket',
       'add to cart',
       'select tickets',
-      'choose ticket',
-      'grandstand',
-      'general admission',
-      'paddock club',
-      'main grandstand',
-      'view tickets',
+      'select category',
+      'choose tickets',
+      'buy tickets now',
+      'book tickets now',
+      'checkout',
       'buy now',
-      'tickets from'
+      'book now'
     ];
 
-    let matchedKeyword: string | null = null;
+    let matchedAction: string | null = null;
 
-    // Search interactive ticket elements & price blocks
-    $('.ticket-card, .ticket-item, .price, .grandstand, a, button, .btn').each((_, elem) => {
+    // Search interactive main content area for actual buy buttons
+    $('main, .content, .container, .ticket-selection, .tickets-list, form, .card').find('a, button, .btn, input[type="submit"]').each((_, elem) => {
       const text = $(elem).text().trim().toLowerCase();
-      // Skip the email interest submit button
-      if (text === 'send' || text.includes('receive the latest news')) return;
 
-      for (const kw of PURCHASE_KEYWORDS) {
-        if (text.includes(kw)) {
-          matchedKeyword = kw;
+      // Ignore static navigation or view-more buttons
+      if (text === 'send' || text === 'view more' || text.includes('read more') || text.includes('learn more')) return;
+
+      for (const btnText of STRICT_PURCHASE_BUTTONS) {
+        if (text.includes(btnText)) {
+          matchedAction = btnText;
           return false;
         }
       }
     });
 
-    // Check for currency symbols + numbers indicating actual price listings (e.g., $150, €200, RM500)
-    const hasPriceListing = /([$€£]|RM|MYR)\s*\d+/.test(bodyText);
+    // Check for actual numerical price listings (e.g., "RM 450", "€180", "$250", "MYR 300")
+    const hasPriceListing = /(RM|MYR|[$€£])\s*\d{2,}/i.test(bodyText);
 
-    if (matchedKeyword || (hasPriceListing && !hasEmailField)) {
-      const finalKeyword = matchedKeyword || 'Active Price Listing Detected';
-      const message = `Detected active ticket sales element: "${finalKeyword}" on ${target.name}`;
+    // Only mark AVAILABLE if we have a strict purchase action OR price listing, AND not trapped in interest-only mode
+    if ((matchedAction || (hasPriceListing && !isInterestOnly)) && !isInterestOnly) {
+      const finalKeyword = matchedAction || 'Active Ticket Price Listings Found';
+      const message = `🚨 TICKETS OPEN! Detected: "${finalKeyword}" on ${target.name}`;
 
-      // Trigger alert if status changed from non-AVAILABLE
       if (target.lastStatus !== 'AVAILABLE') {
-        console.log(`[Monitor] ALERT TRIGGER! Match found: ${finalKeyword} on ${target.url}`);
+        console.log(`[Monitor] REAL TICKET ALERT TRIGGERED: ${finalKeyword} on ${target.url}`);
         await triggerTicketAlert({
           targetName: target.name,
           targetUrl: target.url,
           matchedKeyword: finalKeyword,
-          details: 'Direct ticket sales / price listings detected on the official F1 portal.'
+          details: 'Verified ticket checkout buttons / prices detected on site.'
         });
       }
 
       return { status: 'AVAILABLE', message };
     } else {
-      const statusDetail = hasEmailField ? 'Page is currently showing Email Interest Registration.' : 'No open ticket sale detected yet.';
+      const statusNote = isInterestOnly ? 'Page is currently showing Email Interest Registration.' : 'No active ticket checkout buttons found yet.';
       return {
         status: 'WAITING',
-        message: `${statusDetail} Monitoring active.`
+        message: `${statusNote} Monitoring active.`
       };
     }
   } catch (error: any) {
