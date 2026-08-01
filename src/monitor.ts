@@ -43,59 +43,94 @@ export async function checkTarget(target: MonitoredTarget): Promise<{ status: 'A
     }
 
     const $ = cheerio.load(html);
+    const previousStatus = String(target.lastStatus);
 
-    // F1 Main Catalog Index Inspector (tickets.formula1.com)
-    if (target.url === 'https://tickets.formula1.com/' || target.url.includes('tickets.formula1.com/en')) {
-      let f1CardStatus: string = 'WAITING';
-      let f1CardMessage = 'Bahrain GP card currently shows VIEW MORE (Interest Registration). Monitoring active.';
-      let matchedPriceOrAction = '';
-      const previousStatus = String(target.lastStatus);
+    // =========================================================================
+    // 1. Direct F1 Event Page (https://tickets.formula1.com/en/f1-83069-bahrain-in-malaysia)
+    // =========================================================================
+    if (target.url.includes('f1-83069-bahrain-in-malaysia') || target.url.includes('f1-') && target.url.includes('bahrain')) {
+      const hasEmailForm = $('input[type="email"]').length > 0 || $('input[placeholder*="email"]').length > 0;
+      const bodyText = $('body').text().toLowerCase();
 
-      // Find cards mentioning Bahrain or Malaysia or Sepang
-      $('article, .event-card, .card, div, section').each((_: any, elem: any) => {
-        const text = $(elem).text().toLowerCase();
+      // If email input field exists or "receive latest news" text exists -> STILL INTEREST ONLY
+      if (hasEmailForm || bodyText.includes('receive the latest news and ticket promotions')) {
+        return {
+          status: 'WAITING',
+          message: 'Direct event page is showing Email Interest Registration (SEND button). Tickets not open yet.'
+        };
+      }
 
-        const isBahrainMalaysiaCard = (text.includes('bahrain') || text.includes('malaysia') || text.includes('sepang')) && text.includes('2026');
+      // Check for real checkout actions once email form disappears
+      const hasCheckoutAction = bodyText.includes('add to basket') || bodyText.includes('add to cart') || bodyText.includes('select tickets') || bodyText.includes('choose category');
 
-        if (isBahrainMalaysiaCard) {
-          const buttonText = $(elem).find('button, a, .btn').text().trim().toLowerCase();
-          const hasBookNow = buttonText.includes('book now') || buttonText.includes('buy ticket');
-          const hasFromPrice = text.includes('from') && /(from\s*[$€£rmmyr\d])/i.test(text);
+      if (hasCheckoutAction) {
+        const msg = '🚨 TICKETS OPEN! Direct event page updated with active checkout buttons.';
+        if (previousStatus !== 'AVAILABLE') {
+          await triggerTicketAlert({
+            targetName: target.name,
+            targetUrl: target.url,
+            matchedKeyword: 'Active Checkout Buttons Found',
+            details: 'Direct F1 event page email form replaced with active ticket purchasing widgets.'
+          });
+        }
+        return { status: 'AVAILABLE', message: msg };
+      }
 
-          if (hasBookNow || hasFromPrice) {
-            f1CardStatus = 'AVAILABLE';
-            matchedPriceOrAction = hasBookNow ? 'BOOK NOW Button' : 'From Price Listing';
-            f1CardMessage = `🚨 TICKETS OPEN ON F1 STORE! Card updated to "${matchedPriceOrAction}".`;
+      return {
+        status: 'WAITING',
+        message: 'Direct event page monitored. No active ticket checkout buttons detected.'
+      };
+    }
+
+    // =========================================================================
+    // 2. F1 Main Catalog Index (https://tickets.formula1.com/ or /en)
+    // =========================================================================
+    if (target.url === 'https://tickets.formula1.com/' || target.url.endsWith('/en') || target.url.endsWith('/en/')) {
+      let isBahrainCardLive = false;
+      let cardMessage = 'Bahrain GP card on F1 Store catalog currently shows VIEW MORE (Interest Only). Monitoring active.';
+
+      // Scope strictly to individual card tiles (avoid grid wrappers)
+      $('[class*="card"], [class*="tile"], [class*="item"], article').each((_: any, elem: any) => {
+        const cardTitle = $(elem).find('h1, h2, h3, h4, h5, [class*="title"], p').first().text().toLowerCase();
+
+        // Must be the specific Bahrain in Malaysia card title
+        if (cardTitle.includes('bahrain') && (cardTitle.includes('malaysia') || cardTitle.includes('sepang'))) {
+          const buttonText = $(elem).find('a, button, .btn').text().trim().toLowerCase();
+
+          // Check if button text inside THIS specific card changed from "view more" to "book now" or "buy tickets"
+          if (buttonText.includes('book now') || buttonText.includes('buy ticket')) {
+            isBahrainCardLive = true;
+            cardMessage = '🚨 TICKETS OPEN ON F1 CATALOG! Bahrain GP card updated to BOOK NOW!';
             return false;
           }
         }
       });
 
-      if (f1CardStatus === 'AVAILABLE') {
+      if (isBahrainCardLive) {
         if (previousStatus !== 'AVAILABLE') {
           await triggerTicketAlert({
-            targetName: 'F1 Official Ticket Store Catalog',
+            targetName: 'F1 Store Catalog Index',
             targetUrl: target.url,
-            matchedKeyword: matchedPriceOrAction,
-            details: 'Bahrain GP card on F1 Store catalog updated from VIEW MORE to BOOK NOW with pricing.'
+            matchedKeyword: 'BOOK NOW Button on Bahrain Card',
+            details: 'Bahrain GP catalog card updated from VIEW MORE to BOOK NOW.'
           });
         }
-        return { status: 'AVAILABLE', message: f1CardMessage };
-      } else {
-        return { status: 'WAITING', message: f1CardMessage };
+        return { status: 'AVAILABLE', message: cardMessage };
       }
+
+      return { status: 'WAITING', message: cardMessage };
     }
 
-    // Sepang Circuit Ticketing Page Handler
-    if (target.url.includes('sepangcircuit.com/ticketing')) {
+    // =========================================================================
+    // 3. Sepang Circuit Ticketing Page Handler
+    // =========================================================================
+    if (target.url.includes('sepangcircuit.com')) {
       let foundF1Card = false;
       let matchedTitle = '';
 
-      // Inspect individual event cards (avoid top-level section/div wrappers)
       $('article, [class*="card"], [class*="event"], [class*="item"]').each((_: any, elem: any) => {
+        const cardTitle = $(elem).find('h1, h2, h3, h4, h5, [class*="title"]').text().toLowerCase();
         const fullCardText = $(elem).text().toLowerCase();
-        // Look for title text inside the card
-        const cardTitle = $(elem).find('h1, h2, h3, h4, h5, p, [class*="title"]').text().toLowerCase();
 
         const isF1Event = cardTitle.includes('bahrain') || cardTitle.includes('formula 1') || (cardTitle.includes('f1') && !cardTitle.includes('offline'));
         const hasBuyBtn = fullCardText.includes('buy ticket') || fullCardText.includes('book now');
@@ -109,7 +144,7 @@ export async function checkTarget(target: MonitoredTarget): Promise<{ status: 'A
 
       if (foundF1Card) {
         const msg = `🚨 TICKETS OPEN ON SEPANG! Event card detected: "${matchedTitle}"`;
-        if (target.lastStatus !== 'AVAILABLE') {
+        if (previousStatus !== 'AVAILABLE') {
           await triggerTicketAlert({
             targetName: 'Sepang Circuit Official Ticketing',
             targetUrl: target.url,
@@ -126,69 +161,9 @@ export async function checkTarget(target: MonitoredTarget): Promise<{ status: 'A
       }
     }
 
-    const bodyText = $('body').text().toLowerCase();
+    // Fallback for any other custom URLs
+    return { status: 'WAITING', message: 'Target checked. No open ticket checkout triggers detected.' };
 
-    // Check if the page is currently showing the email interest registration form
-    const hasEmailField = $('input[type="email"], input[placeholder*="email"]').length > 0;
-    const isInterestOnly = hasEmailField || bodyText.includes('receive the latest news and ticket promotions') || bodyText.includes('register your interest');
-
-    // Strict purchase keywords (Must be an actual checkout / buy action)
-    const STRICT_PURCHASE_BUTTONS = [
-      'add to basket',
-      'add to cart',
-      'select tickets',
-      'select category',
-      'choose tickets',
-      'buy tickets now',
-      'book tickets now',
-      'checkout',
-      'buy now',
-      'book now'
-    ];
-
-    let matchedAction: string | null = null;
-
-    // Search interactive main content area for actual buy buttons
-    $('main, .content, .container, .ticket-selection, .tickets-list, form, .card').find('a, button, .btn, input[type="submit"]').each((_: any, elem: any) => {
-      const text = $(elem).text().trim().toLowerCase();
-
-      // Ignore static navigation or view-more buttons
-      if (text === 'send' || text === 'view more' || text.includes('read more') || text.includes('learn more')) return;
-
-      for (const btnText of STRICT_PURCHASE_BUTTONS) {
-        if (text.includes(btnText)) {
-          matchedAction = btnText;
-          return false;
-        }
-      }
-    });
-
-    // Check for actual numerical price listings (e.g., "RM 450", "€180", "$250", "MYR 300")
-    const hasPriceListing = /(RM|MYR|[$€£])\s*\d{2,}/i.test(bodyText);
-
-    // Only mark AVAILABLE if we have a strict purchase action OR price listing, AND not trapped in interest-only mode
-    if ((matchedAction || (hasPriceListing && !isInterestOnly)) && !isInterestOnly) {
-      const finalKeyword = matchedAction || 'Active Ticket Price Listings Found';
-      const message = `🚨 TICKETS OPEN! Detected: "${finalKeyword}" on ${target.name}`;
-
-      if (target.lastStatus !== 'AVAILABLE') {
-        console.log(`[Monitor] REAL TICKET ALERT TRIGGERED: ${finalKeyword} on ${target.url}`);
-        await triggerTicketAlert({
-          targetName: target.name,
-          targetUrl: target.url,
-          matchedKeyword: finalKeyword,
-          details: 'Verified ticket checkout buttons / prices detected on site.'
-        });
-      }
-
-      return { status: 'AVAILABLE', message };
-    } else {
-      const statusNote = isInterestOnly ? 'Page is currently showing Email Interest Registration.' : 'No active ticket checkout buttons found yet.';
-      return {
-        status: 'WAITING',
-        message: `${statusNote} Monitoring active.`
-      };
-    }
   } catch (error: any) {
     const errorMsg = error.response ? `HTTP ${error.response.status}` : error.message;
     console.error(`[Monitor] Error checking ${target.name}:`, errorMsg);
