@@ -36,13 +36,12 @@ function setupScheduler(cronSchedule: string) {
 }
 
 // API Routes
-app.get('/api/config', (req, res) => {
+app.get('/notifier-api/config', (req, res) => {
   const config = loadConfig();
-  // Mask token for UI security if requested, but return full config for editing
   res.json(config);
 });
 
-app.post('/api/config', (req, res) => {
+app.post('/notifier-api/config', (req, res) => {
   try {
     const newConfig = req.body;
     saveConfig(newConfig);
@@ -58,17 +57,17 @@ app.post('/api/config', (req, res) => {
   }
 });
 
-app.get('/api/logs', (req, res) => {
+app.get('/notifier-api/logs', (req, res) => {
   const limit = parseInt(req.query.limit as string) || 50;
   res.json(getLogs(limit));
 });
 
-app.post('/api/test-telegram', async (req, res) => {
+app.post('/notifier-api/test-telegram', async (req, res) => {
   const result = await sendTestAlert();
   res.json(result);
 });
 
-app.post('/api/check-now', async (req, res) => {
+app.post('/notifier-api/check-now', async (req, res) => {
   try {
     const summary = await runMonitoringCycle();
     res.json({ success: true, message: `Check complete! Inspected ${summary.checked} targets. Alerts triggered: ${summary.alerts}` });

@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadConfig() {
     try {
-      const res = await fetch('/api/config');
+      const res = await fetch('/notifier-api/config');
       const config = await res.json();
       currentConfig = config;
 
@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadLogs() {
     try {
-      const res = await fetch('/api/logs?limit=30');
+      const res = await fetch('/notifier-api/logs?limit=30');
       const logs = await res.json();
 
       if (!logs || logs.length === 0) {
@@ -143,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     try {
-      const res = await fetch('/api/config', {
+      const res = await fetch('/notifier-api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedConfig)
@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnTestTelegram.disabled = true;
     btnTestTelegram.innerHTML = '<span>⏳</span> Sending Test...';
     try {
-      const res = await fetch('/api/test-telegram', { method: 'POST' });
+      const res = await fetch('/notifier-api/test-telegram', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         showToast(data.message, 'success');
@@ -185,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnCheckNow.disabled = true;
     btnCheckNow.innerHTML = '<span class="icon">⏳</span> Checking Sites...';
     try {
-      const res = await fetch('/api/check-now', { method: 'POST' });
+      const res = await fetch('/notifier-api/check-now', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         showToast(data.message, 'success');
