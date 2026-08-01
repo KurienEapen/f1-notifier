@@ -45,49 +45,98 @@ export async function checkTarget(target: MonitoredTarget): Promise<{ status: 'A
     const $ = cheerio.load(html);
     const bodyText = $('body').text().toLowerCase();
 
-    // Check for strong positive keywords in page buttons, links, or headings
+    // Auto-Discovery Mode: If checking main catalog index, scan all event links for Malaysia / Bahrain GP
+    if (target.url === 'https://tickets.formula1.com/') {
+      let discoveredUrl: string | null = null;
+      let discoveredText: string | null = null;
+
+      $('a[href*="malaysia"], a[href*="bahrain"], a[href*="sepang"]').each((_, elem) => {
+        const href = $(elem).attr('href');
+        const text = $(elem).text().trim();
+        if (href && (href.includes('malaysia') || href.includes('bahrain') || href.includes('sepang'))) {
+          discoveredUrl = href.startsWith('http') ? href : `https://tickets.formula1.com${href}`;
+          discoveredText = text || 'Malaysia / Bahrain GP Ticket Link';
+          return false;
+        }
+      });
+
+      if (discoveredUrl) {
+        console.log(`[Auto-Discovery] Found event link on main F1 catalog: ${discoveredUrl}`);
+        // Alert if a new event page URL is discovered or goes live
+        if (target.lastStatus !== 'AVAILABLE') {
+          await triggerTicketAlert({
+            targetName: 'F1 Store Main Catalog Index',
+            targetUrl: discoveredUrl,
+            matchedKeyword: 'New Event Link Published on F1 Store Index',
+            details: `Found active ticket link on main catalog: "${discoveredText}" -> ${discoveredUrl}`
+          });
+        }
+        return {
+          status: 'AVAILABLE',
+          message: `Discovered race ticket link on main F1 catalog: ${discoveredUrl}`
+        };
+      }
+    }
+
+    // Check if the page is currently in "Email Interest Registration" mode
+    const hasEmailField = $('input[type="email"], input[placeholder*="email"]').length > 0;
+    const hasSendBtn = $('button:contains("SEND"), input[type="submit"][value*="SEND"]').length > 0 || bodyText.includes('receive the latest news and ticket promotions');
+
+    // High-confidence ticket purchase indicators
+    const PURCHASE_KEYWORDS = [
+      'add to basket',
+      'add to cart',
+      'select tickets',
+      'choose ticket',
+      'grandstand',
+      'general admission',
+      'paddock club',
+      'main grandstand',
+      'view tickets',
+      'buy now',
+      'tickets from'
+    ];
+
     let matchedKeyword: string | null = null;
 
-    // Search interactive elements first (buttons, links, headings)
-    $('a, button, .btn, .ticket-status, h1, h2, h3').each((_, elem) => {
+    // Search interactive ticket elements & price blocks
+    $('.ticket-card, .ticket-item, .price, .grandstand, a, button, .btn').each((_, elem) => {
       const text = $(elem).text().trim().toLowerCase();
-      for (const kw of POSITIVE_KEYWORDS) {
-        if (text.includes(kw) && !text.includes('sold out')) {
+      // Skip the email interest submit button
+      if (text === 'send' || text.includes('receive the latest news')) return;
+
+      for (const kw of PURCHASE_KEYWORDS) {
+        if (text.includes(kw)) {
           matchedKeyword = kw;
           return false;
         }
       }
     });
 
-    // Fallback search in full page body
-    if (!matchedKeyword) {
-      for (const kw of ['buy tickets for 2026', 'bahrain grand prix 2026 tickets', 'sepang f1 tickets open']) {
-        if (bodyText.includes(kw)) {
-          matchedKeyword = kw;
-          break;
-        }
-      }
-    }
+    // Check for currency symbols + numbers indicating actual price listings (e.g., $150, €200, RM500)
+    const hasPriceListing = /([$€£]|RM|MYR)\s*\d+/.test(bodyText);
 
-    if (matchedKeyword) {
-      const message = `Detected positive keyword match: "${matchedKeyword}" on ${target.name}`;
+    if (matchedKeyword || (hasPriceListing && !hasEmailField)) {
+      const finalKeyword = matchedKeyword || 'Active Price Listing Detected';
+      const message = `Detected active ticket sales element: "${finalKeyword}" on ${target.name}`;
 
-      // Trigger alert if status changed from non-AVAILABLE or if first match
+      // Trigger alert if status changed from non-AVAILABLE
       if (target.lastStatus !== 'AVAILABLE') {
-        console.log(`[Monitor] ALERT TRIGGER! Match found: ${matchedKeyword} on ${target.url}`);
+        console.log(`[Monitor] ALERT TRIGGER! Match found: ${finalKeyword} on ${target.url}`);
         await triggerTicketAlert({
           targetName: target.name,
           targetUrl: target.url,
-          matchedKeyword: matchedKeyword,
-          details: 'Direct match detected on ticket site elements.'
+          matchedKeyword: finalKeyword,
+          details: 'Direct ticket sales / price listings detected on the official F1 portal.'
         });
       }
 
       return { status: 'AVAILABLE', message };
     } else {
+      const statusDetail = hasEmailField ? 'Page is currently showing Email Interest Registration.' : 'No open ticket sale detected yet.';
       return {
         status: 'WAITING',
-        message: 'No open ticket sale detected yet. Monitoring active.'
+        message: `${statusDetail} Monitoring active.`
       };
     }
   } catch (error: any) {

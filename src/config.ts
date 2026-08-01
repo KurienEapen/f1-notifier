@@ -36,8 +36,16 @@ const LOGS_FILE = path.join(DATA_DIR, 'logs.json');
 
 const DEFAULT_TARGETS: MonitoredTarget[] = [
   {
-    id: 'f1-official',
-    name: 'F1 Official Ticket Store (Bahrain/Malaysia GP 2026)',
+    id: 'f1-direct-event',
+    name: 'F1 Store (Direct Event Page: Bahrain in Malaysia)',
+    url: 'https://tickets.formula1.com/en/f1-83069-bahrain-in-malaysia',
+    enabled: true,
+    lastStatus: 'WAITING',
+    lastMessage: 'Initialized'
+  },
+  {
+    id: 'f1-catalog-index',
+    name: 'F1 Store Main Catalog Index (Auto-Discovery)',
     url: 'https://tickets.formula1.com/',
     enabled: true,
     lastStatus: 'WAITING',
