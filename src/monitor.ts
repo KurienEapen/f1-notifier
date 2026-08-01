@@ -44,8 +44,39 @@ export async function checkTarget(target: MonitoredTarget): Promise<{ status: 'A
 
     const $ = cheerio.load(html);
 
-    // Remove header, footer, navigation menus to prevent matching static site navigation links (e.g. "Grandstand Info")
-    $('header, footer, nav, .menu, .navigation, .footer, .site-header').remove();
+    // Sepang Circuit Ticketing Page Handler
+    if (target.url.includes('sepangcircuit.com/ticketing')) {
+      let foundF1Card = false;
+      let matchedText = '';
+
+      $('.card, .event-card, div, section').each((_, elem) => {
+        const text = $(elem).text().toLowerCase();
+        // Require the card to mention Bahrain OR Formula 1 OR F1
+        if ((text.includes('bahrain') || text.includes('formula 1') || text.includes('f1')) && (text.includes('buy ticket') || text.includes('book now') || text.includes('tickets'))) {
+          foundF1Card = true;
+          matchedText = $(elem).find('h1, h2, h3, h4, .title').text().trim() || 'Formula 1 Bahrain GP Ticket Card';
+          return false;
+        }
+      });
+
+      if (foundF1Card) {
+        const msg = `🚨 TICKETS OPEN ON SEPANG! Event card detected: "${matchedText}"`;
+        if (target.lastStatus !== 'AVAILABLE') {
+          await triggerTicketAlert({
+            targetName: 'Sepang Circuit Official Ticketing',
+            targetUrl: target.url,
+            matchedKeyword: `Sepang F1 Card: ${matchedText}`,
+            details: 'Formula 1 / Bahrain GP ticket card published on Sepang Circuit.'
+          });
+        }
+        return { status: 'AVAILABLE', message: msg };
+      } else {
+        return {
+          status: 'WAITING',
+          message: 'Sepang ticketing page currently shows other events (MotoGP/MTCC). Formula 1 Bahrain GP not open yet.'
+        };
+      }
+    }
 
     const bodyText = $('body').text().toLowerCase();
 

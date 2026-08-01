@@ -53,8 +53,8 @@ const DEFAULT_TARGETS: MonitoredTarget[] = [
   },
   {
     id: 'sepang-circuit',
-    name: 'Sepang International Circuit Official',
-    url: 'https://www.sepangcircuit.com/',
+    name: 'Sepang International Circuit (Ticketing Page)',
+    url: 'https://www.sepangcircuit.com/ticketing',
     enabled: true,
     lastStatus: 'WAITING',
     lastMessage: 'Initialized'
