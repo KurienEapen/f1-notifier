@@ -92,7 +92,14 @@ export function loadConfig(): AppConfig {
   const existingTargets = config.targets || [];
   const mergedTargets: MonitoredTarget[] = DEFAULT_TARGETS.map(defTarget => {
     const existing = existingTargets.find(t => t.id === defTarget.id);
-    return existing ? { ...defTarget, ...existing } : defTarget;
+    if (existing) {
+      return {
+        ...existing,
+        name: defTarget.name,
+        url: defTarget.url
+      };
+    }
+    return defTarget;
   });
 
   return {
