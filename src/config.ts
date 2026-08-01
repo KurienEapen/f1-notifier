@@ -95,13 +95,21 @@ export function saveConfig(newConfig: AppConfig): void {
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(newConfig, null, 2), 'utf8');
 }
 
+const TWO_DAYS_MS = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
+
 export function getLogs(limit = 50): LogEntry[] {
   ensureDataDir();
   if (!fs.existsSync(LOGS_FILE)) return [];
   try {
     const data = fs.readFileSync(LOGS_FILE, 'utf8');
     const logs: LogEntry[] = JSON.parse(data);
-    return logs.slice(0, limit);
+    const now = Date.now();
+    // Filter out logs older than 2 days
+    const recentLogs = logs.filter(log => {
+      const logTime = new Date(log.timestamp).getTime();
+      return (now - logTime) <= TWO_DAYS_MS;
+    });
+    return recentLogs.slice(0, limit);
   } catch (e) {
     return [];
   }
@@ -109,12 +117,20 @@ export function getLogs(limit = 50): LogEntry[] {
 
 export function addLog(log: Omit<LogEntry, 'id' | 'timestamp'>): void {
   ensureDataDir();
-  const logs = getLogs(200);
+  const now = Date.now();
+  const rawLogs = getLogs(200);
+
+  // Auto-prune logs older than 2 days (48 hours)
+  const freshLogs = rawLogs.filter(entry => {
+    const time = new Date(entry.timestamp).getTime();
+    return (now - time) <= TWO_DAYS_MS;
+  });
+
   const newEntry: LogEntry = {
     id: Math.random().toString(36).substring(2, 9),
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(now).toISOString(),
     ...log
   };
-  logs.unshift(newEntry);
-  fs.writeFileSync(LOGS_FILE, JSON.stringify(logs.slice(0, 100), null, 2), 'utf8');
+  freshLogs.unshift(newEntry);
+  fs.writeFileSync(LOGS_FILE, JSON.stringify(freshLogs.slice(0, 100), null, 2), 'utf8');
 }
