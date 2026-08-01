@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bahrain GP 2026 Ticket Notifier (Sepang, Malaysia)</title>
+  <meta name="description" content="Automated ticket monitor and Telegram alert service for Formula 1 Bahrain Grand Prix 2026 at Sepang International Circuit, Malaysia.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="glow-bg"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="f1-badge">F1 2026</div>
+        <div>
+          <h1>Bahrain GP <span>Ticket Notifier</span></h1>
+          <p class="subtitle">Sepang International Circuit, Malaysia • Oct 2–4, 2026</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btnCheckNow" class="btn btn-primary">
+          <span class="icon">🔄</span> Run Check Now
+        </button>
+      </div>
+    </header>
+
+    <!-- System Banner / Status Summary -->
+    <section class="summary-cards">
+      <div class="card status-card">
+        <div class="card-icon">⚡</div>
+        <div class="card-info">
+          <span class="card-label">Monitoring Status</span>
+          <span id="statSystemStatus" class="card-value badge badge-success">Active Polling</span>
+        </div>
+      </div>
+
+      <div class="card status-card">
+        <div class="card-icon">📱</div>
+        <div class="card-info">
+          <span class="card-label">Telegram Alerts</span>
+          <span id="statTelegramStatus" class="card-value badge">Checking...</span>
+        </div>
+      </div>
+
+      <div class="card status-card">
+        <div class="card-icon">⏱️</div>
+        <div class="card-info">
+          <span class="card-label">Interval Schedule</span>
+          <span id="statCronSchedule" class="card-value font-mono">Every 5 min</span>
+        </div>
+      </div>
+
+      <div class="card status-card">
+        <div class="card-icon">🎯</div>
+        <div class="card-info">
+          <span class="card-label">Active Targets</span>
+          <span id="statTargetCount" class="card-value">3 Sites</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Grid -->
+    <div class="dashboard-grid">
+
+      <!-- Left Column: Settings & Configuration -->
+      <section class="panel glass-panel">
+        <div class="panel-header">
+          <h2>📲 Telegram Notification Settings</h2>
+          <p>Get instant push messages to your Telegram when tickets open</p>
+        </div>
+
+        <form id="configForm" class="config-form">
+          <div class="form-group">
+            <label for="telegramBotToken">Telegram Bot Token</label>
+            <input type="password" id="telegramBotToken" class="input-control" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ..." required>
+            <small class="form-help">Created via <strong>@BotFather</strong> on Telegram.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="telegramChatId">Telegram Chat ID</label>
+            <input type="text" id="telegramChatId" class="input-control" placeholder="123456789 or -100xxxxxxxx" required>
+            <small class="form-help">Get your Chat ID by messaging your bot or <strong>@userinfobot</strong>.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="cronSchedule">Check Schedule (Cron Syntax)</label>
+            <input type="text" id="cronSchedule" class="input-control font-mono" value="*/5 * * * *" placeholder="*/5 * * * *">
+            <small class="form-help">Default: <code>*/5 * * * *</code> (Every 5 minutes)</small>
+          </div>
+
+          <div class="form-group">
+            <label for="discordWebhookUrl">Discord Webhook (Optional Secondary Channel)</label>
+            <input type="url" id="discordWebhookUrl" class="input-control" placeholder="https://discord.com/api/webhooks/...">
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-save">
+              <span>💾</span> Save Configuration
+            </button>
+            <button type="button" id="btnTestTelegram" class="btn btn-secondary">
+              <span>🚀</span> Test Telegram Alert
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Right Column: Monitored Outlets & Targets -->
+      <section class="panel glass-panel">
+        <div class="panel-header">
+          <h2>🌐 Monitored Outlets</h2>
+          <p>Official channels tracked for Bahrain GP 2026 (Malaysia) tickets</p>
+        </div>
+
+        <div id="targetsList" class="targets-list">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Bottom Section: Live Event Log -->
+    <section class="panel glass-panel full-width">
+      <div class="panel-header flex-between">
+        <div>
+          <h2>📜 Live Activity & Log Feed</h2>
+          <p>Real-time monitor history and ticket availability checks</p>
+        </div>
+        <button id="btnClearLogs" class="btn btn-sm btn-ghost">Refresh Feed</button>
+      </div>
+
+      <div class="table-container">
+        <table class="logs-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Target Outlet</th>
+              <th>Status</th>
+              <th>Details & Messages</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody">
+            <tr>
+              <td colspan="4" class="text-center text-muted">Loading activity logs...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

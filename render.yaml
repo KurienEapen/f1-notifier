@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: bahrain-gp-ticket-notifier
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: CHECK_CRON_SCHEDULE
+        value: "*/5 * * * *"
